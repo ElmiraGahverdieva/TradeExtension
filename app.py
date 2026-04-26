@@ -208,6 +208,10 @@ class App:
         await asyncio.gather(ws.run(), _watch_stop(), self._volume_loop())
 
     async def _on_candle(self, symbol: str, candle: dict):
+        logging.getLogger(__name__).info(
+            "Candle %-20s O=%-9.2f H=%-9.2f L=%-9.2f C=%.2f",
+            symbol, candle["open"], candle["high"], candle["low"], candle["close"],
+        )
         signal = self._engine.on_new_candle(symbol, candle)
         if signal:
             await dispatch(signal)
