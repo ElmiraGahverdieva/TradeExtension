@@ -14,7 +14,9 @@ def _format_telegram(signal: Signal) -> str:
     import math
     direction = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
     emoji = "🟢" if signal.signal_type == SignalType.BUY else "🔴"
-    dt = datetime.fromtimestamp(signal.timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    from datetime import timedelta
+    minsk = timezone(timedelta(hours=3))
+    dt = datetime.fromtimestamp(signal.timestamp, tz=minsk).strftime("%Y-%m-%d %H:%M (Минск)")
 
     def fmt(v: float) -> str:
         if math.isnan(v):
