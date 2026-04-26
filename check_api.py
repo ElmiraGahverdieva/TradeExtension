@@ -2,73 +2,76 @@
 import asyncio
 import aiohttp
 import json
-
+import sys
 
 BASE_URL = "https://demo-api-adapter.dzengi.com"
+TIMEOUT = aiohttp.ClientTimeout(total=10)
+
+
+async def get(session, url, params=None):
+    print(f"  -> GET {url} {params or ''}", flush=True)
+    try:
+        async with session.get(url, params=params, timeout=TIMEOUT) as r:
+            text = await r.text()
+            print(f"  <- {r.status}", flush=True)
+            return r.status, text
+    except asyncio.TimeoutError:
+        print("  <- TIMEOUT (10s)", flush=True)
+        return None, None
+    except Exception as e:
+        print(f"  <- ERROR: {e}", flush=True)
+        return None, None
 
 
 async def main():
+    print("Starting API check...", flush=True)
+    print(f"Base URL: {BASE_URL}\n", flush=True)
+
     async with aiohttp.ClientSession() as s:
 
-        # 1. exchangeInfo — list all available symbols
-        print("=== /api/v1/exchangeInfo ===")
-        try:
-            async with s.get(f"{BASE_URL}/api/v1/exchangeInfo") as r:
-                print(f"Status: {r.status}")
-                if r.status == 200:
-                    data = await r.json(content_type=None)
-                    symbols = data.get("symbols", data)
-                    if isinstance(symbols, list):
-                        print(f"Total symbols: {len(symbols)}")
-                        print("First 10:")
-                        for sym in symbols[:10]:
-                            if isinstance(sym, dict):
-                                print(f"  {sym.get('symbol') or sym}")
-                            else:
-                                print(f"  {sym}")
-                    else:
-                        print(json.dumps(data, indent=2)[:2000])
+        # 1. exchangeInfo
+        print("=== 1. exchangeInfo ===", flush=True)
+        status, text = await get(s, f"{BASE_URL}/api/v1/exchangeInfo")
+        if status == 200:
+            try:
+                data = json.loads(text)
+                symbols = data.get("symbols", data)
+                if isinstance(symbols, list):
+                    print(f"Total symbols: {len(symbols)}")
+                    print("First 15 symbol names:")
+                    for sym in symbols[:15]:
+                        name = sym.get("symbol") if isinstance(sym, dict) else sym
+                        print(f"  {name}")
                 else:
-                    text = await r.text()
-                    print(f"Error body: {text[:500]}")
-        except Exception as e:
-            print(f"Exception: {e}")
-
+                    print(text[:1000])
+            except Exception:
+                print(text[:1000])
+        elif text:
+            print(f"Body: {text[:300]}")
         print()
 
-        # 2. Try klines with a few symbol formats
-        for sym in ["BTCUSDT", "BTC/USDT", "BTCUSD", "BTC-USDT"]:
-            print(f"=== klines symbol={sym} ===")
-            try:
-                async with s.get(
-                    f"{BASE_URL}/api/v1/klines",
-                    params={"symbol": sym, "interval": "15m", "limit": "5"},
-                ) as r:
-                    print(f"Status: {r.status}")
-                    if r.status == 200:
-                        data = await r.json(content_type=None)
-                        print(f"Got {len(data)} candles — SYMBOL WORKS: {sym}")
-                    else:
-                        text = await r.text()
-                        print(f"Error: {text[:200]}")
-            except Exception as e:
-                print(f"Exception: {e}")
-            print()
+        # 2. klines — try different symbol formats
+        print("=== 2. klines (trying symbol formats) ===", flush=True)
+        for sym in ["BTCUSDT", "BTC/USDT", "BTCUSD", "BTC-USDT", "XBT/USDT"]:
+            status, text = await get(
+                s, f"{BASE_URL}/api/v1/klines",
+                {"symbol": sym, "interval": "15m", "limit": "3"}
+            )
+            if status == 200:
+                print(f"  *** WORKS: symbol={sym} ***")
+                break
+            elif text:
+                print(f"  error: {text[:100]}")
+        print()
 
-        # 3. ticker/price — try a few formats too
-        for sym in ["BTCUSDT", "BTC/USDT"]:
-            print(f"=== ticker/price symbol={sym} ===")
-            try:
-                async with s.get(
-                    f"{BASE_URL}/api/v1/ticker/price",
-                    params={"symbol": sym},
-                ) as r:
-                    print(f"Status: {r.status}")
-                    text = await r.text()
-                    print(f"Body: {text[:300]}")
-            except Exception as e:
-                print(f"Exception: {e}")
-            print()
+        # 3. ticker price
+        print("=== 3. ticker/price ===", flush=True)
+        status, text = await get(s, f"{BASE_URL}/api/v1/ticker/price")
+        if text:
+            print(f"Body: {text[:500]}")
+        print()
+
+    print("Done.", flush=True)
 
 
 asyncio.run(main())
