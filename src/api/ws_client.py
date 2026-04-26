@@ -15,8 +15,9 @@ CandleCallback = Callable[[str, dict], Awaitable[None]]
 class DzengiWsClient:
     """WebSocket client for Dzengi.com real-time OHLC market data.
 
-    Subscription format confirmed from Swagger:
-      {"type": "wss:OHLCMarketData.subscribe", "symbols": [...], "intervals": [...]}
+    Subscription envelope (destination+correlationId+payload):
+      {"correlationId":"ohlc-1","destination":"wss:OHLCMarketData.subscribe",
+       "payload":{"symbols":[...],"intervals":[...],"type":"classic"}}
 
     Incoming event format:
       {"status":"OK","correlationId":"...","payload":{
@@ -59,10 +60,17 @@ class DzengiWsClient:
                 ping_task.cancel()
 
     async def _subscribe(self, ws):
+        # Ping first to confirm routing mechanism works
+        await ws.send(json.dumps({"correlationId": "ping-1", "destination": "wss:ping", "payload": {}}))
+
         msg = {
-            "type": "wss:OHLCMarketData.subscribe",
-            "symbols": self._symbols,
-            "intervals": [self._interval],
+            "correlationId": "ohlc-1",
+            "destination": "wss:OHLCMarketData.subscribe",
+            "payload": {
+                "symbols": self._symbols,
+                "intervals": [self._interval],
+                "type": "classic",
+            },
         }
         await ws.send(json.dumps(msg))
         logger.info("Subscribed: %s %s", self._symbols, self._interval)
@@ -79,6 +87,7 @@ class DzengiWsClient:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
+            logger.debug("WS non-JSON: %s", raw[:200])
             return
 
         status = data.get("status")
@@ -87,8 +96,9 @@ class DzengiWsClient:
             return
 
         payload = data.get("payload", {})
-        if payload.get("Destination") != "ohlc.event":
-            logger.debug("WS non-ohlc msg: %s", raw[:100])
+        destination = payload.get("Destination", "") if isinstance(payload, dict) else ""
+        if destination != "ohlc.event":
+            logger.info("WS msg: %s", raw[:200])
             return
 
         p = payload.get("Payload", {})
