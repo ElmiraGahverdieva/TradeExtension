@@ -15,11 +15,11 @@ CandleCallback = Callable[[str, dict], Awaitable[None]]
 class DzengiWsClient:
     """WebSocket client for Dzengi.com real-time OHLC market data.
 
-    Subscription envelope (destination+correlationId+payload):
-      {"correlationId":"ohlc-1","destination":"wss:OHLCMarketData.subscribe",
+    Subscription (confirmed working):
+      {"correlationId":"ohlc-1","destination":"OHLCMarketData.subscribe",
        "payload":{"symbols":[...],"intervals":[...],"type":"classic"}}
 
-    Incoming event format:
+    Incoming candle event:
       {"status":"OK","correlationId":"...","payload":{
         "Destination":"ohlc.event",
         "Payload":{"T":1234,"O":1.0,"H":1.1,"L":0.9,"C":1.05,"symbol":"BTC/USD_LEVERAGE","interval":"1m"}
@@ -60,12 +60,9 @@ class DzengiWsClient:
                 ping_task.cancel()
 
     async def _subscribe(self, ws):
-        # Ping first to confirm routing mechanism works
-        await ws.send(json.dumps({"correlationId": "ping-1", "destination": "wss:ping", "payload": {}}))
-
         msg = {
             "correlationId": "ohlc-1",
-            "destination": "wss:OHLCMarketData.subscribe",
+            "destination": "OHLCMarketData.subscribe",
             "payload": {
                 "symbols": self._symbols,
                 "intervals": [self._interval],
