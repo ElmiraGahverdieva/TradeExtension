@@ -46,3 +46,7 @@ LOG_FILE = os.getenv("LOG_FILE", "logs/trading.log")
 
 CANDLE_BUFFER_SIZE = 200
 WS_PING_INTERVAL = 20
+
+ATR_PERIOD = int(os.getenv("ATR_PERIOD", "14"))
+ATR_SL_MULTIPLIER = float(os.getenv("ATR_SL_MULTIPLIER", "1.5"))
+ATR_TP_MULTIPLIER = float(os.getenv("ATR_TP_MULTIPLIER", "2.5"))

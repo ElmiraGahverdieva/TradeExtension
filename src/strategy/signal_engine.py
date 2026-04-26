@@ -12,6 +12,7 @@ from src.indicators.ema import ema_cross
 from src.indicators.macd import calculate_macd
 from src.indicators.bollinger import calculate_bollinger
 from src.indicators.volume import calculate_volume
+from src.indicators.atr import calculate_atr
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,10 @@ class Signal:
     signal_type: SignalType
     strength: SignalStrength
     price: float
+    entry: float
+    stop_loss: float
+    take_profit: float
+    atr: float
     score: int
     max_score: int
     conditions: Dict[str, bool]
@@ -110,14 +115,17 @@ class SignalEngine:
     def _evaluate(self, symbol: str, buf: CandleBuffer, price: float, ts: float) -> Optional[Signal]:
         closes = buf.np_closes()
         volumes = buf.np_volumes()
+        highs = np.array(buf.highs, dtype=float)
+        lows = np.array(buf.lows, dtype=float)
 
         rsi = calculate_rsi(closes, config.RSI_PERIOD)
         ema = ema_cross(closes, config.EMA_FAST, config.EMA_SLOW)
         macd = calculate_macd(closes, config.MACD_FAST, config.MACD_SLOW, config.MACD_SIGNAL)
         bb = calculate_bollinger(closes, config.BB_PERIOD, config.BB_STD_DEV)
         vol = calculate_volume(volumes, config.VOLUME_PERIOD, config.VOLUME_MULTIPLIER)
+        atr = calculate_atr(highs, lows, closes, config.ATR_PERIOD)
 
-        indicators = {"rsi": rsi, "ema": ema, "macd": macd, "bb": bb, "volume": vol}
+        indicators = {"rsi": rsi, "ema": ema, "macd": macd, "bb": bb, "volume": vol, "atr": atr}
 
         buy_conditions = self._check_buy(rsi, ema, macd, bb, vol)
         sell_conditions = self._check_sell(rsi, ema, macd, bb, vol)
@@ -126,10 +134,10 @@ class SignalEngine:
         sell_score = sum(sell_conditions.values())
 
         logger.debug(
-            "%s price=%.4f RSI=%.1f EMA_trend=%s MACD_cross=%s BB_pct=%.2f vol_ratio=%.2f "
+            "%s price=%.4f RSI=%.1f EMA_trend=%s MACD_cross=%s BB_pct=%.2f vol_ratio=%.2f ATR=%.4f "
             "buy=%d/5 sell=%d/5",
             symbol, price, rsi, ema["trend"], macd["crossover"],
-            bb.get("percent_b", 0), vol.get("ratio", 0),
+            bb.get("percent_b", 0), vol.get("ratio", 0), atr,
             buy_score, sell_score,
         )
 
@@ -140,14 +148,26 @@ class SignalEngine:
         signal_type = SignalType.BUY if buy_score >= sell_score else SignalType.SELL
         conditions = buy_conditions if signal_type == SignalType.BUY else sell_conditions
         score = buy_score if signal_type == SignalType.BUY else sell_score
-
         strength = SignalStrength.STRONG if score >= 4 else SignalStrength.MEDIUM
+
+        entry = price
+        if not np.isnan(atr):
+            sl = entry - config.ATR_SL_MULTIPLIER * atr if signal_type == SignalType.BUY \
+                else entry + config.ATR_SL_MULTIPLIER * atr
+            tp = entry + config.ATR_TP_MULTIPLIER * atr if signal_type == SignalType.BUY \
+                else entry - config.ATR_TP_MULTIPLIER * atr
+        else:
+            sl = tp = float("nan")
 
         return Signal(
             symbol=symbol,
             signal_type=signal_type,
             strength=strength,
             price=price,
+            entry=entry,
+            stop_loss=sl,
+            take_profit=tp,
+            atr=atr,
             score=score,
             max_score=5,
             conditions=conditions,

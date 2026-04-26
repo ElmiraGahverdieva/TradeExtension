@@ -11,19 +11,30 @@ logger = logging.getLogger(__name__)
 
 
 def _format_telegram(signal: Signal) -> str:
-    arrow = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
+    import math
+    direction = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
+    emoji = "🟢" if signal.signal_type == SignalType.BUY else "🔴"
     dt = datetime.fromtimestamp(signal.timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
+    def fmt(v: float) -> str:
+        if math.isnan(v):
+            return "—"
+        return f"{v:,.2f}"
+
     lines = [
-        f"*{arrow} SIGNAL — {signal.symbol}*",
-        f"Strength: {signal.strength.value} ({signal.score}/{signal.max_score})",
-        f"Price: `{signal.price:,.4f}`",
+        f"{emoji} *{direction} — {signal.symbol}*",
+        f"Сила сигнала: {signal.strength.value} ({signal.score}/{signal.max_score})",
         "",
-        "*Conditions:*",
+        f"📍 Вход:        `{fmt(signal.entry)}`",
+        f"🛑 Стоп-лосс:  `{fmt(signal.stop_loss)}`",
+        f"🎯 Тейк-профит: `{fmt(signal.take_profit)}`",
+        f"📏 ATR(14):     `{fmt(signal.atr)}`",
+        "",
+        "*Индикаторы:*",
     ]
     for name, hit in signal.conditions.items():
-        mark = "YES" if hit else "NO "
-        lines.append(f"  [{mark}] {name}")
+        mark = "✅" if hit else "❌"
+        lines.append(f"  {mark} {name}")
     lines.append(f"\n_{dt}_")
 
     return "\n".join(lines)
