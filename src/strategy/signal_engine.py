@@ -62,7 +62,13 @@ class CandleBuffer:
         self.highs.append(candle["high"])
         self.lows.append(candle["low"])
         self.closes.append(candle["close"])
-        self.volumes.append(candle["volume"])
+        vol = candle.get("volume", 0)
+        if vol > 0:
+            self.volumes.append(vol)
+        elif self.volumes:
+            self.volumes.append(self.volumes[-1])  # повторяем последний известный объём
+        else:
+            self.volumes.append(0.0)
 
     def clear(self):
         self.opens.clear()
@@ -142,7 +148,7 @@ class SignalEngine:
 
         logger.info(
             "%s | RSI=%.1f  EMA=%s  MACD=%s  BB_pct=%.2f  Vol=%.2f  ATR=%.2f | buy=%d/5 sell=%d/5",
-            symbol, rsi, ema["trend"], macd["crossover"],
+            symbol, rsi, ema["trend"], macd["crossover"] or "neutral",
             bb.get("percent_b", float("nan")),
             vol.get("ratio", 0), atr, buy_score, sell_score,
         )
