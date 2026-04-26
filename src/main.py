@@ -48,6 +48,8 @@ async def _load_history(rest: DzengiRestClient):
 
 
 async def _on_candle(symbol: str, candle: dict):
+    logger.info("Candle %-20s O=%-9.2f H=%-9.2f L=%-9.2f C=%.2f",
+                symbol, candle["open"], candle["high"], candle["low"], candle["close"])
     signal = engine.on_new_candle(symbol, candle)
     if signal:
         await dispatch(signal)
