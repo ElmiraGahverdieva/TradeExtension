@@ -92,26 +92,26 @@ class DzengiWsClient:
             logger.error("WS error: %s", data)
             return
 
-        payload = data.get("payload", {})
-        destination = payload.get("Destination", "") if isinstance(payload, dict) else ""
+        # Real format: destination at top level (lowercase), payload contains candle fields
+        destination = data.get("destination", "")
         if destination != "ohlc.event":
             logger.info("WS msg: %s", raw[:200])
             return
 
-        p = payload.get("Payload", {})
+        p = data.get("payload", {})
         symbol = p.get("symbol", "")
         if not symbol:
             return
 
         candle = {
             "symbol": symbol,
-            "open_time": p.get("T"),
-            "open": float(p.get("O", 0)),
-            "high": float(p.get("H", 0)),
-            "low": float(p.get("L", 0)),
-            "close": float(p.get("C", 0)),
+            "open_time": p.get("t"),
+            "open": float(p.get("o", 0)),
+            "high": float(p.get("h", 0)),
+            "low": float(p.get("l", 0)),
+            "close": float(p.get("c", 0)),
             "volume": 0.0,
-            "close_time": p.get("T"),
+            "close_time": p.get("t"),
             "interval": p.get("interval", self._interval),
         }
 
