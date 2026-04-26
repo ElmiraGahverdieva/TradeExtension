@@ -1,0 +1,78 @@
+"""
+TradeExtension — main entry point.
+
+Startup sequence:
+  1. Load historical klines via REST (200 candles per symbol) to warm up indicators.
+  2. Connect WebSocket and stream live closed candles.
+  3. On each closed candle run SignalEngine; if signal fires — dispatch notification.
+"""
+import asyncio
+import logging
+import os
+import sys
+
+from src import config
+from src.api.rest_client import DzengiRestClient
+from src.api.ws_client import DzengiWsClient
+from src.strategy.signal_engine import SignalEngine
+from src.notifications import dispatch
+
+_LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s — %(message)s"
+
+
+def _setup_logging():
+    os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
+    handlers = [logging.StreamHandler(sys.stdout)]
+    try:
+        handlers.append(logging.FileHandler(config.LOG_FILE, encoding="utf-8"))
+    except OSError:
+        pass
+    logging.basicConfig(level=config.LOG_LEVEL, format=_LOG_FORMAT, handlers=handlers)
+
+
+logger = logging.getLogger(__name__)
+
+engine = SignalEngine()
+
+
+async def _load_history(rest: DzengiRestClient):
+    logger.info("Loading historical klines for %s …", config.SYMBOLS)
+    for symbol in config.SYMBOLS:
+        try:
+            klines = await rest.get_klines(symbol, config.TIMEFRAME, config.CANDLE_BUFFER_SIZE)
+            buf = engine.get_buffer(symbol)
+            buf.load_klines(klines)
+            logger.info("  %s: loaded %d candles", symbol, len(klines))
+        except Exception as exc:
+            logger.error("Failed to load history for %s: %s", symbol, exc)
+
+
+async def _on_candle(symbol: str, candle: dict):
+    signal = engine.on_new_candle(symbol, candle)
+    if signal:
+        await dispatch(signal)
+
+
+async def main():
+    _setup_logging()
+
+    logger.info("TradeExtension starting")
+    logger.info("  ENV:      %s", os.getenv("DZENGI_ENV", "demo"))
+    logger.info("  Symbols:  %s", config.SYMBOLS)
+    logger.info("  TF:       %s", config.TIMEFRAME)
+    logger.info("  REST:     %s", config.REST_BASE_URL)
+    logger.info("  WS:       %s", config.WS_URL)
+
+    async with DzengiRestClient() as rest:
+        await _load_history(rest)
+
+    ws = DzengiWsClient(config.SYMBOLS, config.TIMEFRAME, _on_candle)
+    logger.info("Starting WebSocket stream …")
+    await ws.run()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Stopped by user")
