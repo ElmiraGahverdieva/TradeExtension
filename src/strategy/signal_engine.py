@@ -2,7 +2,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Optional, Dict
 
 import numpy as np
 
@@ -35,7 +35,7 @@ class Signal:
     price: float
     score: int
     max_score: int
-    conditions: dict[str, bool]
+    conditions: Dict[str, bool]
     indicators: dict
     timestamp: float
 
@@ -90,7 +90,7 @@ class SignalEngine:
     """Evaluate all indicators and produce a trade signal when confluence is met."""
 
     def __init__(self):
-        self._buffers: dict[str, CandleBuffer] = {}
+        self._buffers: Dict[str, CandleBuffer] = {}
 
     def get_buffer(self, symbol: str) -> CandleBuffer:
         if symbol not in self._buffers:
@@ -156,7 +156,7 @@ class SignalEngine:
         )
 
     @staticmethod
-    def _check_buy(rsi, ema, macd, bb, vol) -> dict[str, bool]:
+    def _check_buy(rsi, ema, macd, bb, vol) -> Dict[str, bool]:
         return {
             "RSI oversold": not np.isnan(rsi) and rsi < 35,
             "EMA bullish": ema["trend"] == "bullish" or ema["crossover"] == "golden",
@@ -169,7 +169,7 @@ class SignalEngine:
         }
 
     @staticmethod
-    def _check_sell(rsi, ema, macd, bb, vol) -> dict[str, bool]:
+    def _check_sell(rsi, ema, macd, bb, vol) -> Dict[str, bool]:
         return {
             "RSI overbought": not np.isnan(rsi) and rsi > 65,
             "EMA bearish": ema["trend"] == "bearish" or ema["crossover"] == "death",

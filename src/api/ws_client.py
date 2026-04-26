@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from collections import defaultdict, deque
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, List
 
 import websockets
 
@@ -20,7 +20,7 @@ class DzengiWsClient:
     `on_candle` with (symbol, candle_dict) whenever a new closed candle arrives.
     """
 
-    def __init__(self, symbols: list[str], interval: str, on_candle: CandleCallback):
+    def __init__(self, symbols: List[str], interval: str, on_candle: CandleCallback):
         self._symbols = symbols
         self._interval = interval
         self._on_candle = on_candle

@@ -38,7 +38,7 @@ class DzengiRestClient:
         params["signature"] = sig
         return params
 
-    async def _get(self, path: str, params: dict | None = None, signed: bool = False) -> Any:
+    async def _get(self, path: str, params: Optional[dict] = None, signed: bool = False) -> Any:
         p = params or {}
         if signed:
             p = self._sign(p)
@@ -72,7 +72,7 @@ class DzengiRestClient:
     async def get_account(self) -> dict:
         return await self._get("/api/v1/account", signed=True)
 
-    async def get_open_orders(self, symbol: str | None = None) -> list:
+    async def get_open_orders(self, symbol: Optional[str] = None) -> list:
         params = {}
         if symbol:
             params["symbol"] = symbol
