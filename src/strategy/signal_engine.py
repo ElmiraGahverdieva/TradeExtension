@@ -64,6 +64,13 @@ class CandleBuffer:
         self.closes.append(candle["close"])
         self.volumes.append(candle["volume"])
 
+    def clear(self):
+        self.opens.clear()
+        self.highs.clear()
+        self.lows.clear()
+        self.closes.clear()
+        self.volumes.clear()
+
     def load_klines(self, klines: list):
         """Populate buffer from REST klines response."""
         for k in klines:
@@ -133,27 +140,21 @@ class SignalEngine:
         buy_score = sum(buy_conditions.values())
         sell_score = sum(sell_conditions.values())
 
-        # Volume data is not available via WebSocket (always 0), so max effective score is 4
-        volume_available = vol.get("ratio", 0) > 0
-        effective_max = 5 if volume_available else 4
-
         logger.info(
-            "%s | RSI=%.1f  EMA=%s  MACD=%s  BB_pct=%.2f  Vol=%s  ATR=%.2f | buy=%d sell=%d",
+            "%s | RSI=%.1f  EMA=%s  MACD=%s  BB_pct=%.2f  Vol=%.2f  ATR=%.2f | buy=%d/5 sell=%d/5",
             symbol, rsi, ema["trend"], macd["crossover"],
             bb.get("percent_b", float("nan")),
-            f"{vol.get('ratio', 0):.2f}" if volume_available else "N/A",
-            atr, buy_score, sell_score,
+            vol.get("ratio", 0), atr, buy_score, sell_score,
         )
 
         best_score = max(buy_score, sell_score)
-        min_required = config.MIN_SIGNALS if volume_available else max(config.MIN_SIGNALS - 1, 2)
-        if best_score < min_required:
+        if best_score < config.MIN_SIGNALS:
             return None
 
         signal_type = SignalType.BUY if buy_score >= sell_score else SignalType.SELL
         conditions = buy_conditions if signal_type == SignalType.BUY else sell_conditions
         score = buy_score if signal_type == SignalType.BUY else sell_score
-        strength = SignalStrength.STRONG if score >= (4 if volume_available else 3) else SignalStrength.MEDIUM
+        strength = SignalStrength.STRONG if score >= 4 else SignalStrength.MEDIUM
 
         entry = price
         if not np.isnan(atr):
@@ -174,7 +175,7 @@ class SignalEngine:
             take_profit=tp,
             atr=atr,
             score=score,
-            max_score=effective_max,
+            max_score=5,
             conditions=conditions,
             indicators=indicators,
             timestamp=ts / 1000 if ts > 1e10 else ts,

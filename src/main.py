@@ -55,6 +55,23 @@ async def _on_candle(symbol: str, candle: dict):
         await dispatch(signal)
 
 
+async def _volume_refresh_loop():
+    """Refresh candle buffers from REST every 5 minutes to keep volume data fresh."""
+    await asyncio.sleep(60)
+    while True:
+        try:
+            async with DzengiRestClient() as rest:
+                for symbol in config.SYMBOLS:
+                    klines = await rest.get_klines(symbol, config.TIMEFRAME, config.CANDLE_BUFFER_SIZE)
+                    buf = engine.get_buffer(symbol)
+                    buf.clear()
+                    buf.load_klines(klines)
+                    logger.info("Volume refresh: %s (%d candles)", symbol, len(klines))
+        except Exception as exc:
+            logger.warning("Volume refresh failed: %s", exc)
+        await asyncio.sleep(300)
+
+
 async def main():
     _setup_logging()
 
@@ -70,7 +87,10 @@ async def main():
 
     ws = DzengiWsClient(config.SYMBOLS, config.TIMEFRAME, _on_candle)
     logger.info("Starting WebSocket stream …")
-    await ws.run()
+    await asyncio.gather(
+        ws.run(),
+        _volume_refresh_loop(),
+    )
 
 
 if __name__ == "__main__":
