@@ -1,11 +1,14 @@
 """
-WebSocket diagnostic — tests multiple subscription formats against Dzengi demo.
+WebSocket diagnostic — tests subscription payload variations against Dzengi demo.
 Run: python ws_diagnose.py
 """
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import sys
+import time
 
 try:
     import websockets
@@ -21,6 +24,7 @@ except ImportError:
 
 WS_URL = "wss://demo-api-adapter.dzengi.com/connect"
 API_KEY = os.getenv("DZENGI_API_KEY", "")
+SECRET_KEY = os.getenv("DZENGI_SECRET_KEY", "")
 SYMBOL = "BTC/USD_LEVERAGE"
 INTERVAL = "1m"
 
@@ -29,65 +33,80 @@ EXTRA_HEADERS = [
     ("User-Agent", "Mozilla/5.0"),
 ]
 
-# Candidate formats to try in order
+
+def sign(params: dict) -> dict:
+    params["timestamp"] = int(time.time() * 1000)
+    query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    sig = hmac.new(SECRET_KEY.encode(), query.encode(), hashlib.sha256).hexdigest()
+    params["signature"] = sig
+    return params
+
+
 FORMATS = [
-    # Format A: destination + correlationId + payload (most likely based on Swagger)
+    # ping without payload key at all
     {
-        "name": "A: destination+correlationId+payload",
-        "msgs": [
-            {"correlationId": "ping-1", "destination": "wss:ping", "payload": {}},
-            {"correlationId": "sub-1", "destination": "wss:OHLCMarketData.subscribe",
-             "payload": {"symbols": [SYMBOL], "intervals": [INTERVAL], "type": "classic"}},
-        ],
+        "name": "ping — no payload field",
+        "msgs": [{"correlationId": "p1", "destination": "wss:ping"}],
     },
-    # Format B: type as destination key (old format, likely wrong)
+    # OHLC without type field
     {
-        "name": "B: type as destination",
-        "msgs": [
-            {"type": "wss:OHLCMarketData.subscribe", "symbols": [SYMBOL], "intervals": [INTERVAL]},
-        ],
+        "name": "OHLC — no type field",
+        "msgs": [{"correlationId": "s1", "destination": "wss:OHLCMarketData.subscribe",
+                  "payload": {"symbols": [SYMBOL], "intervals": [INTERVAL]}}],
     },
-    # Format C: type=subscribe with destination in body
+    # OHLC classic (already tried, retry cleanly)
     {
-        "name": "C: type=subscribe with route",
-        "msgs": [
-            {"type": "subscribe", "route": "wss:OHLCMarketData.subscribe",
-             "symbols": [SYMBOL], "intervals": [INTERVAL], "candleType": "classic"},
-        ],
+        "name": "OHLC — type=classic",
+        "msgs": [{"correlationId": "s2", "destination": "wss:OHLCMarketData.subscribe",
+                  "payload": {"symbols": [SYMBOL], "intervals": [INTERVAL], "type": "classic"}}],
     },
-    # Format D: action field
+    # lowercase destination
     {
-        "name": "D: action field",
-        "msgs": [
-            {"action": "wss:OHLCMarketData.subscribe",
-             "symbols": [SYMBOL], "intervals": [INTERVAL], "type": "classic"},
-        ],
+        "name": "OHLC — lowercase destination",
+        "msgs": [{"correlationId": "s3", "destination": "wss:ohlcMarketData.subscribe",
+                  "payload": {"symbols": [SYMBOL], "intervals": [INTERVAL], "type": "classic"}}],
     },
-    # Format E: event field
+    # full path destination
     {
-        "name": "E: event field",
-        "msgs": [
-            {"event": "subscribe", "destination": "OHLCMarketData",
-             "symbols": [SYMBOL], "intervals": [INTERVAL], "type": "classic"},
-        ],
+        "name": "OHLC — /api/v1/ path",
+        "msgs": [{"correlationId": "s4", "destination": "wss:/api/v1/OHLCMarketData.subscribe",
+                  "payload": {"symbols": [SYMBOL], "intervals": [INTERVAL], "type": "classic"}}],
+    },
+    # signed OHLC request (apiKey+signature in payload)
+    {
+        "name": "OHLC — signed (apiKey in payload)",
+        "msgs": [{"correlationId": "s5", "destination": "wss:OHLCMarketData.subscribe",
+                  "payload": sign({"symbols": SYMBOL, "intervals": INTERVAL,
+                                   "type": "classic", "apiKey": API_KEY})}],
+    },
+    # symbol without slash
+    {
+        "name": "OHLC — symbol BTCUSD_LEVERAGE (no slash)",
+        "msgs": [{"correlationId": "s6", "destination": "wss:OHLCMarketData.subscribe",
+                  "payload": {"symbols": ["BTCUSD_LEVERAGE"], "intervals": [INTERVAL], "type": "classic"}}],
+    },
+    # interval as string not array
+    {
+        "name": "OHLC — interval as string",
+        "msgs": [{"correlationId": "s7", "destination": "wss:OHLCMarketData.subscribe",
+                  "payload": {"symbols": [SYMBOL], "interval": INTERVAL, "type": "classic"}}],
     },
 ]
 
 
-async def test_format(fmt: dict, timeout: float = 6.0):
-    print(f"\n{'='*60}")
+async def test_format(fmt: dict, timeout: float = 7.0):
+    print(f"\n{'='*55}")
     print(f"Testing: {fmt['name']}")
-    print(f"{'='*60}")
+    print(f"{'='*55}")
     try:
         async with websockets.connect(WS_URL, extra_headers=EXTRA_HEADERS,
                                       open_timeout=10) as ws:
             print("  Connected.")
             for msg in fmt["msgs"]:
-                payload = json.dumps(msg)
-                print(f"  >> {payload}")
-                await ws.send(payload)
+                out = json.dumps(msg)
+                print(f"  >> {out[:200]}")
+                await ws.send(out)
 
-            # Collect responses for `timeout` seconds
             deadline = asyncio.get_event_loop().time() + timeout
             got_ohlc = False
             while asyncio.get_event_loop().time() < deadline:
@@ -95,33 +114,32 @@ async def test_format(fmt: dict, timeout: float = 6.0):
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=min(remaining, 2.0))
                     print(f"  << {raw[:300]}")
-                    if "ohlc" in raw.lower() or "OHLC" in raw or "Payload" in raw:
+                    low = raw.lower()
+                    if "ohlc" in low or "payload" in low and "open" in low:
                         print("  *** GOT OHLC DATA — THIS FORMAT WORKS! ***")
                         got_ohlc = True
                         break
+                    if "ok" in low and "error" not in low:
+                        print("  *** GOT OK — waiting for candle data... ***")
                 except asyncio.TimeoutError:
                     pass
             if not got_ohlc:
-                print("  (no OHLC data received within timeout)")
+                print("  (no OHLC within timeout)")
     except Exception as exc:
         print(f"  ERROR: {exc}")
-
-    return
 
 
 async def main():
     if not API_KEY:
-        print("WARNING: DZENGI_API_KEY not set — some formats may fail auth\n")
-
-    print(f"Target: {WS_URL}")
+        print("WARNING: DZENGI_API_KEY not set\n")
+    print(f"WS: {WS_URL}")
     print(f"Symbol: {SYMBOL}  Interval: {INTERVAL}\n")
 
-    # Test all formats sequentially
     for fmt in FORMATS:
         await test_format(fmt)
         await asyncio.sleep(1)
 
-    print("\nDone. Look for '*** GOT OHLC DATA ***' above.")
+    print("\nDone.")
 
 
 asyncio.run(main())
