@@ -16,7 +16,7 @@ WS_URL = DEMO_WS_URL if _ENV == "demo" else LIVE_WS_URL
 API_KEY = os.getenv("DZENGI_API_KEY", "")
 SECRET_KEY = os.getenv("DZENGI_SECRET_KEY", "")
 
-SYMBOLS = [s.strip() for s in os.getenv("SYMBOLS", "BTCUSDT").split(",")]
+SYMBOLS = [s.strip() for s in os.getenv("SYMBOLS", "BTC/USD_LEVERAGE,ETH/USD_LEVERAGE").split(",")]
 TIMEFRAME = os.getenv("TIMEFRAME", "15m")
 MIN_SIGNALS = int(os.getenv("MIN_SIGNALS", "3"))
 

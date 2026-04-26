@@ -21,7 +21,10 @@ class DzengiRestClient:
     async def __aenter__(self):
         self._session = aiohttp.ClientSession(
             base_url=config.REST_BASE_URL,
-            headers={"X-MBX-APIKEY": config.API_KEY},
+            headers={
+                "X-MBX-APIKEY": config.API_KEY,
+                "User-Agent": "Mozilla/5.0",
+            },
         )
         return self
 
@@ -59,9 +62,6 @@ class DzengiRestClient:
             {"symbol": symbol, "interval": interval, "limit": limit},
         )
         return data
-
-    async def get_ticker_price(self, symbol: str) -> dict:
-        return await self._get("/api/v1/ticker/price", {"symbol": symbol})
 
     async def get_ticker_24hr(self, symbol: str) -> dict:
         return await self._get("/api/v1/ticker/24hr", {"symbol": symbol})
