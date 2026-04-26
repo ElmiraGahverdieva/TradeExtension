@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-from collections import defaultdict, deque
 from typing import Callable, Awaitable, List
 
 import websockets
@@ -14,10 +13,16 @@ CandleCallback = Callable[[str, dict], Awaitable[None]]
 
 
 class DzengiWsClient:
-    """WebSocket client for Dzengi.com real-time market data.
+    """WebSocket client for Dzengi.com real-time OHLC market data.
 
-    Subscribes to OHLC streams for each configured symbol and calls
-    `on_candle` with (symbol, candle_dict) whenever a new closed candle arrives.
+    Subscription format confirmed from Swagger:
+      {"type": "wss:OHLCMarketData.subscribe", "symbols": [...], "intervals": [...]}
+
+    Incoming event format:
+      {"status":"OK","correlationId":"...","payload":{
+        "Destination":"ohlc.event",
+        "Payload":{"T":1234,"O":1.0,"H":1.1,"L":0.9,"C":1.05,"symbol":"BTC/USD_LEVERAGE","interval":"1m"}
+      }}
     """
 
     def __init__(self, symbols: List[str], interval: str, on_candle: CandleCallback):
@@ -39,7 +44,11 @@ class DzengiWsClient:
         self._running = False
 
     async def _connect(self):
-        async with websockets.connect(config.WS_URL) as ws:
+        extra = [
+            ("X-MBX-APIKEY", config.API_KEY),
+            ("User-Agent", "Mozilla/5.0"),
+        ]
+        async with websockets.connect(config.WS_URL, extra_headers=extra) as ws:
             logger.info("WS connected to %s", config.WS_URL)
             await self._subscribe(ws)
             ping_task = asyncio.create_task(self._ping_loop(ws))
@@ -50,18 +59,13 @@ class DzengiWsClient:
                 ping_task.cancel()
 
     async def _subscribe(self, ws):
-        for symbol in self._symbols:
-            msg = {
-                "method": "SUBSCRIBE",
-                "params": [
-                    f"wss:OHLCMarketData.subscribe",
-                    f"symbol={symbol}",
-                    f"intervals={self._interval}",
-                ],
-                "id": hash(symbol) & 0xFFFF,
-            }
-            await ws.send(json.dumps(msg))
-            logger.debug("Subscribed to %s %s", symbol, self._interval)
+        msg = {
+            "type": "wss:OHLCMarketData.subscribe",
+            "symbols": self._symbols,
+            "intervals": [self._interval],
+        }
+        await ws.send(json.dumps(msg))
+        logger.info("Subscribed: %s %s", self._symbols, self._interval)
 
     async def _ping_loop(self, ws):
         while True:
@@ -77,29 +81,33 @@ class DzengiWsClient:
         except json.JSONDecodeError:
             return
 
-        # Dzengi sends OHLC update as an event with symbol and OHLC fields
-        if not isinstance(data, dict):
-            return
-        if data.get("e") != "kline" and "k" not in data:
-            return
-
-        candle = data.get("k", data)
-        symbol = data.get("s") or candle.get("s", "")
-        is_closed = candle.get("x", False)
-
-        if not is_closed:
+        status = data.get("status")
+        if status == "ERROR":
+            logger.error("WS error: %s", data)
             return
 
-        parsed = {
+        payload = data.get("payload", {})
+        if payload.get("Destination") != "ohlc.event":
+            logger.debug("WS non-ohlc msg: %s", raw[:100])
+            return
+
+        p = payload.get("Payload", {})
+        symbol = p.get("symbol", "")
+        if not symbol:
+            return
+
+        candle = {
             "symbol": symbol,
-            "open_time": candle.get("t"),
-            "open": float(candle.get("o", 0)),
-            "high": float(candle.get("h", 0)),
-            "low": float(candle.get("l", 0)),
-            "close": float(candle.get("c", 0)),
-            "volume": float(candle.get("v", 0)),
-            "close_time": candle.get("T"),
-            "interval": candle.get("i", self._interval),
+            "open_time": p.get("T"),
+            "open": float(p.get("O", 0)),
+            "high": float(p.get("H", 0)),
+            "low": float(p.get("L", 0)),
+            "close": float(p.get("C", 0)),
+            "volume": 0.0,
+            "close_time": p.get("T"),
+            "interval": p.get("interval", self._interval),
         }
 
-        await self._on_candle(symbol, parsed)
+        logger.debug("Candle %s O=%.4f H=%.4f L=%.4f C=%.4f",
+                     symbol, candle["open"], candle["high"], candle["low"], candle["close"])
+        await self._on_candle(symbol, candle)
