@@ -56,8 +56,8 @@ async def _on_candle(symbol: str, candle: dict):
 
 
 async def _volume_refresh_loop():
-    """Refresh candle buffers from REST every 5 minutes to keep volume data fresh."""
-    await asyncio.sleep(60)
+    """Refresh candle buffers from REST every minute to keep volume data current."""
+    await asyncio.sleep(65)
     while True:
         try:
             async with DzengiRestClient() as rest:
@@ -66,10 +66,9 @@ async def _volume_refresh_loop():
                     buf = engine.get_buffer(symbol)
                     buf.clear()
                     buf.load_klines(klines)
-                    logger.info("Volume refresh: %s (%d candles)", symbol, len(klines))
         except Exception as exc:
             logger.warning("Volume refresh failed: %s", exc)
-        await asyncio.sleep(300)
+        await asyncio.sleep(60)
 
 
 async def main():
