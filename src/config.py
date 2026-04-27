@@ -17,7 +17,8 @@ API_KEY = os.getenv("DZENGI_API_KEY", "")
 SECRET_KEY = os.getenv("DZENGI_SECRET_KEY", "")
 
 SYMBOLS = [s.strip() for s in os.getenv("SYMBOLS", "BTC/USD_LEVERAGE,ETH/USD_LEVERAGE").split(",")]
-TIMEFRAME = os.getenv("TIMEFRAME", "15m")
+TIMEFRAMES = [s.strip() for s in os.getenv("TIMEFRAMES", "1m,5m,15m,30m,1h").split(",")]
+TIMEFRAME = TIMEFRAMES[0] if TIMEFRAMES else "1m"
 MIN_SIGNALS = int(os.getenv("MIN_SIGNALS", "3"))
 
 RSI_PERIOD = int(os.getenv("RSI_PERIOD", "14"))

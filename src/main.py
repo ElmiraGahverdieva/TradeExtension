@@ -36,15 +36,16 @@ engine = SignalEngine()
 
 
 async def _load_history(rest: DzengiRestClient):
-    logger.info("Loading historical klines for %s …", config.SYMBOLS)
+    logger.info("Loading historical klines for %s × %s …", config.SYMBOLS, config.TIMEFRAMES)
     for symbol in config.SYMBOLS:
-        try:
-            klines = await rest.get_klines(symbol, config.TIMEFRAME, config.CANDLE_BUFFER_SIZE)
-            buf = engine.get_buffer(symbol)
-            buf.load_klines(klines)
-            logger.info("  %s: loaded %d candles", symbol, len(klines))
-        except Exception as exc:
-            logger.error("Failed to load history for %s: %s", symbol, exc)
+        for tf in config.TIMEFRAMES:
+            try:
+                klines = await rest.get_klines(symbol, tf, config.CANDLE_BUFFER_SIZE)
+                buf = engine.get_buffer(symbol, tf)
+                buf.load_klines(klines)
+                logger.info("  %s [%s]: loaded %d candles", symbol, tf, len(klines))
+            except Exception as exc:
+                logger.error("Failed to load history for %s [%s]: %s", symbol, tf, exc)
 
 
 async def _on_candle(symbol: str, candle: dict):
@@ -62,10 +63,11 @@ async def _volume_refresh_loop():
         try:
             async with DzengiRestClient() as rest:
                 for symbol in config.SYMBOLS:
-                    klines = await rest.get_klines(symbol, config.TIMEFRAME, config.CANDLE_BUFFER_SIZE)
-                    buf = engine.get_buffer(symbol)
-                    buf.clear()
-                    buf.load_klines(klines)
+                    for tf in config.TIMEFRAMES:
+                        klines = await rest.get_klines(symbol, tf, config.CANDLE_BUFFER_SIZE)
+                        buf = engine.get_buffer(symbol, tf)
+                        buf.clear()
+                        buf.load_klines(klines)
         except Exception as exc:
             logger.warning("Volume refresh failed: %s", exc)
         await asyncio.sleep(60)
@@ -84,7 +86,7 @@ async def main():
     async with DzengiRestClient() as rest:
         await _load_history(rest)
 
-    ws = DzengiWsClient(config.SYMBOLS, config.TIMEFRAME, _on_candle)
+    ws = DzengiWsClient(config.SYMBOLS, config.TIMEFRAMES, _on_candle)
     logger.info("Starting WebSocket stream …")
     await asyncio.gather(
         ws.run(),

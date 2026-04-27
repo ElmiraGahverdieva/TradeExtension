@@ -26,9 +26,9 @@ class DzengiWsClient:
       }}
     """
 
-    def __init__(self, symbols: List[str], interval: str, on_candle: CandleCallback):
+    def __init__(self, symbols: List[str], intervals: List[str], on_candle: CandleCallback):
         self._symbols = symbols
-        self._interval = interval
+        self._intervals = intervals
         self._on_candle = on_candle
         self._running = False
 
@@ -65,12 +65,12 @@ class DzengiWsClient:
             "destination": "OHLCMarketData.subscribe",
             "payload": {
                 "symbols": self._symbols,
-                "intervals": [self._interval],
+                "intervals": self._intervals,
                 "type": "classic",
             },
         }
         await ws.send(json.dumps(msg))
-        logger.info("Subscribed: %s %s", self._symbols, self._interval)
+        logger.info("Subscribed: %s %s", self._symbols, self._intervals)
 
     async def _ping_loop(self, ws):
         while True:
@@ -112,7 +112,7 @@ class DzengiWsClient:
             "close": float(p.get("c", 0)),
             "volume": 0.0,
             "close_time": p.get("t"),
-            "interval": p.get("interval", self._interval),
+            "interval": p.get("interval", self._intervals[0]),
         }
 
         logger.debug("Candle %s O=%.4f H=%.4f L=%.4f C=%.4f",

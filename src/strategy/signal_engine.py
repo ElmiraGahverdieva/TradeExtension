@@ -31,6 +31,7 @@ class SignalStrength(Enum):
 @dataclass
 class Signal:
     symbol: str
+    timeframe: str
     signal_type: SignalType
     strength: SignalStrength
     price: float
@@ -110,22 +111,24 @@ class SignalEngine:
     def __init__(self):
         self._buffers: Dict[str, CandleBuffer] = {}
 
-    def get_buffer(self, symbol: str) -> CandleBuffer:
-        if symbol not in self._buffers:
-            self._buffers[symbol] = CandleBuffer(symbol=symbol)
-        return self._buffers[symbol]
+    def get_buffer(self, symbol: str, timeframe: str) -> CandleBuffer:
+        key = f"{symbol}:{timeframe}"
+        if key not in self._buffers:
+            self._buffers[key] = CandleBuffer(symbol=symbol)
+        return self._buffers[key]
 
     def on_new_candle(self, symbol: str, candle: dict) -> Optional[Signal]:
-        buf = self.get_buffer(symbol)
+        timeframe = candle.get("interval", config.TIMEFRAME)
+        buf = self.get_buffer(symbol, timeframe)
         buf.add(candle)
 
         if not buf.ready:
-            logger.debug("%s buffer not ready (%d candles)", symbol, len(buf.closes))
+            logger.debug("%s[%s] buffer not ready (%d candles)", symbol, timeframe, len(buf.closes))
             return None
 
-        return self._evaluate(symbol, buf, candle["close"], candle.get("close_time", 0))
+        return self._evaluate(symbol, timeframe, buf, candle["close"], candle.get("close_time", 0))
 
-    def _evaluate(self, symbol: str, buf: CandleBuffer, price: float, ts: float) -> Optional[Signal]:
+    def _evaluate(self, symbol: str, timeframe: str, buf: CandleBuffer, price: float, ts: float) -> Optional[Signal]:
         closes = buf.np_closes()
         volumes = buf.np_volumes()
         highs = np.array(buf.highs, dtype=float)
@@ -147,8 +150,8 @@ class SignalEngine:
         sell_score = sum(sell_conditions.values())
 
         logger.info(
-            "%s | RSI=%.1f  EMA=%s  MACD=%s  BB_pct=%.2f  Vol=%.2f  ATR=%.2f | buy=%d/5 sell=%d/5",
-            symbol, rsi, ema["trend"], macd["crossover"] or "neutral",
+            "%s [%s] | RSI=%.1f  EMA=%s  MACD=%s  BB_pct=%.2f  Vol=%.2f  ATR=%.2f | buy=%d/5 sell=%d/5",
+            symbol, timeframe, rsi, ema["trend"], macd["crossover"] or "neutral",
             bb.get("percent_b", float("nan")),
             vol.get("ratio", 0), atr, buy_score, sell_score,
         )
@@ -173,6 +176,7 @@ class SignalEngine:
 
         return Signal(
             symbol=symbol,
+            timeframe=timeframe,
             signal_type=signal_type,
             strength=strength,
             price=price,

@@ -24,7 +24,7 @@ def _format_telegram(signal: Signal) -> str:
         return f"{v:,.2f}"
 
     lines = [
-        f"{emoji} *{direction} — {signal.symbol}*",
+        f"{emoji} *{direction} — {signal.symbol}*  `[{signal.timeframe}]`",
         f"Сила сигнала: {signal.strength.value} ({signal.score}/{signal.max_score})",
         "",
         f"📍 Вход:        `{fmt(signal.entry)}`",

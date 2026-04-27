@@ -99,18 +99,19 @@ async def _async_main():
 
     async with DzengiRestClient() as rest:
         for symbol in config.SYMBOLS:
-            try:
-                klines = await rest.get_klines(symbol, config.TIMEFRAME, config.CANDLE_BUFFER_SIZE)
-                buf = _engine.get_buffer(symbol)
-                buf.clear()
-                buf.load_klines(klines)
-                logger.info("📦 %s: загружено %d свечей", symbol, len(klines))
-            except Exception as exc:
-                logger.error("❌ Ошибка загрузки %s: %s", symbol, exc)
+            for tf in config.TIMEFRAMES:
+                try:
+                    klines = await rest.get_klines(symbol, tf, config.CANDLE_BUFFER_SIZE)
+                    buf = _engine.get_buffer(symbol, tf)
+                    buf.clear()
+                    buf.load_klines(klines)
+                    logger.info("📦 %s [%s]: загружено %d свечей", symbol, tf, len(klines))
+                except Exception as exc:
+                    logger.error("❌ Ошибка загрузки %s [%s]: %s", symbol, tf, exc)
 
     _status["status_text"] = "Мониторинг активен"
 
-    ws = DzengiWsClient(config.SYMBOLS, config.TIMEFRAME, _on_candle)
+    ws = DzengiWsClient(config.SYMBOLS, config.TIMEFRAMES, _on_candle)
 
     async def _watch_stop():
         while not _stop_event.is_set():
@@ -137,10 +138,11 @@ async def _volume_loop():
         try:
             async with DzengiRestClient() as rest:
                 for symbol in config.SYMBOLS:
-                    klines = await rest.get_klines(symbol, config.TIMEFRAME, config.CANDLE_BUFFER_SIZE)
-                    buf = _engine.get_buffer(symbol)
-                    buf.clear()
-                    buf.load_klines(klines)
+                    for tf in config.TIMEFRAMES:
+                        klines = await rest.get_klines(symbol, tf, config.CANDLE_BUFFER_SIZE)
+                        buf = _engine.get_buffer(symbol, tf)
+                        buf.clear()
+                        buf.load_klines(klines)
         except Exception as exc:
             logging.getLogger(__name__).warning("Volume refresh: %s", exc)
         await asyncio.sleep(60)
@@ -286,7 +288,7 @@ pollStatus();
 </script>
 </body>
 </html>
-""".replace("__SYMBOLS__", ", ".join(config.SYMBOLS)).replace("__TF__", config.TIMEFRAME)
+""".replace("__SYMBOLS__", ", ".join(config.SYMBOLS)).replace("__TF__", ", ".join(config.TIMEFRAMES))
 
 
 # ── HTTP server ────────────────────────────────────────────────────────────────

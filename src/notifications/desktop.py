@@ -6,12 +6,12 @@ from src.strategy.signal_engine import Signal, SignalType
 logger = logging.getLogger(__name__)
 
 
-def _format_message(signal: Signal) -> tuple[str, str]:
+def _format_message(signal: Signal):
     """Return (title, body) for the notification."""
     icon = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
     dt = datetime.fromtimestamp(signal.timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    title = f"{icon} SIGNAL — {signal.symbol} [{signal.strength.value}]"
+    title = f"{icon} — {signal.symbol} [{signal.timeframe}] {signal.strength.value}"
 
     lines = [
         f"Price:    {signal.price:,.4f}",
