@@ -46,6 +46,7 @@ async def _load_history(rest: DzengiRestClient):
                 logger.info("  %s [%s]: loaded %d candles", symbol, tf, len(klines))
             except Exception as exc:
                 logger.error("Failed to load history for %s [%s]: %s", symbol, tf, exc)
+            await asyncio.sleep(0.4)
 
 
 async def _on_candle(symbol: str, candle: dict):
@@ -68,6 +69,7 @@ async def _volume_refresh_loop():
                         buf = engine.get_buffer(symbol, tf)
                         buf.clear()
                         buf.load_klines(klines)
+                        await asyncio.sleep(0.4)
         except Exception as exc:
             logger.warning("Volume refresh failed: %s", exc)
         await asyncio.sleep(60)

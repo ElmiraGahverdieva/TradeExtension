@@ -108,6 +108,7 @@ async def _async_main():
                     logger.info("📦 %s [%s]: загружено %d свечей", symbol, tf, len(klines))
                 except Exception as exc:
                     logger.error("❌ Ошибка загрузки %s [%s]: %s", symbol, tf, exc)
+                await asyncio.sleep(0.4)
 
     _status["status_text"] = "Мониторинг активен"
 
@@ -143,6 +144,7 @@ async def _volume_loop():
                         buf = _engine.get_buffer(symbol, tf)
                         buf.clear()
                         buf.load_klines(klines)
+                        await asyncio.sleep(0.4)
         except Exception as exc:
             logging.getLogger(__name__).warning("Volume refresh: %s", exc)
         await asyncio.sleep(60)
